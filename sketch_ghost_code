@@ -1,0 +1,180 @@
+// Create the Plate Reverb Library for this effect to run
+// A0 = Feedback
+// A1 = Tone 
+// A2 = Division (there are four: /64 /32 /16 /8)
+// A3 = Depth
+// Toggle switch = “Alt” division (/32 /16 /8)
+// Footswitch turns on “Alt” division
+
+
+#define LED 3
+#include <Bounce.h>
+#include "effect_platervbstereo.h"
+
+#include <Audio.h>
+#include <Wire.h>
+#include <SPI.h>
+#include <SD.h>
+#include <SerialFlash.h>
+
+// GUItool: begin automatically generated code
+AudioInputI2S            i2s1;           //xy=227.1110610961914,444.5555610656738
+AudioSynthWaveformDc     dc1;            //xy=491.2221450805664,436.66667556762695
+AudioSynthWaveform       waveform1;      //xy=498.2221450805664,503.66667556762695
+AudioEffectPlateReverb      freeverb2; //xy=517.7777709960938,762.2222900390625
+AudioMixer4              mixer3; //xy=518.2221946716309,691.6666736602783
+AudioEffectPlateReverb      freeverb1;      //xy=521.2221946716309,165.66667366027832
+AudioMixer4              mixer1;         //xy=531.2221946716309,241.66667366027832
+AudioMixer4              mixer2; //xy=636.2221450805664,463.66667556762695
+AudioFilterBiquad        biquad1;        //xy=741.1110916137695,161.11109828948975
+AudioEffectMultiply      multiply1;      //xy=815.5555258856879,317.777778201633
+AudioEffectMultiply      multiply2; //xy=817.7777252197266,622.2222585678101
+AudioAnalyzeNoteFrequency notefreq1;      //xy=923.3333511352539,158.8888931274414
+AudioFilterBiquad        biquad2; //xy=958.8888778686523,320.0000343322754
+AudioFilterBiquad        biquad4; //xy=971.1110382080078,618.8888845443726
+AudioAmplifier           amp1;           //xy=1112.2223739624023,321.11109924316406
+AudioAmplifier           amp2; //xy=1127.7777557373047,613.3333530426025
+AudioOutputI2S           i2s2;           //xy=1330.7777290344238,467.55562019348145
+AudioConnection          patchCord1(i2s1, 0, mixer1, 0);
+AudioConnection          patchCord2(i2s1, 1, mixer3, 0);
+AudioConnection          patchCord3(dc1, 0, mixer2, 0);
+AudioConnection          patchCord4(waveform1, 0, mixer2, 1);
+AudioConnection          patchCord5(freeverb2, 0, mixer3, 1);
+AudioConnection          patchCord6(freeverb2, 0, multiply2, 1);
+AudioConnection          patchCord7(mixer3, freeverb2);
+AudioConnection          patchCord8(freeverb1, 0, mixer1, 1);
+AudioConnection          patchCord9(freeverb1, 0, multiply1, 0);
+AudioConnection          patchCord10(freeverb1, biquad1);
+AudioConnection          patchCord11(mixer1, freeverb1);
+AudioConnection          patchCord12(mixer2, 0, multiply1, 1);
+AudioConnection          patchCord13(mixer2, 0, multiply2, 0);
+AudioConnection          patchCord14(biquad1, notefreq1);
+AudioConnection          patchCord15(multiply1, biquad2);
+AudioConnection          patchCord16(multiply2, biquad4);
+AudioConnection          patchCord17(biquad2, amp1);
+AudioConnection          patchCord18(biquad4, amp2);
+AudioConnection          patchCord19(amp1, 0, i2s2, 0);
+AudioConnection          patchCord20(amp2, 0, i2s2, 1);
+AudioControlSGTL5000     sgtl5000_1;     //xy=1292.666603088379,783.6667251586914
+// GUItool: end automatically generated code
+
+
+
+
+Bounce footswitch = Bounce(0, 50);  // debounce the footswitch
+Bounce D1 = Bounce(1, 50);          // debounce the toggle switch
+Bounce D2 = Bounce(2, 50);          // "  "  "  "  "  "  "  "  "
+
+// this section includes the function to check the toggle position
+bool right;
+bool middle;
+bool left;
+void checkToggle () {               // this is our function to check toggle position...
+D1.update();  D2.update();          // check digital inputs connected to toggle (can delete I think)
+if(digitalRead(1) && !digitalRead(2))   {right = 1; middle = 0; left = 0;}    // toggle is right
+if(digitalRead(1) && digitalRead(2))  {right = 0; middle = 1; left = 0;}      // toggle is in the middle
+if(!digitalRead(1) && digitalRead(2))   {right = 0; middle = 0; left = 1;}    // toggle is left
+}
+
+// variables
+float reverbtime;
+float note;
+byte division;
+int lpf;
+float depth;
+
+extern "C" uint32_t set_arm_clock(uint32_t frequency);
+
+void setup() {
+
+  set_arm_clock(146000000);
+ 
+  AudioMemory(450); // the "40" represents how much internal memory (in the Teensy, not the external RAM chip) is allotted for audio recording. It is measured in sample blocks, each providing 2.9ms of audio.
+  sgtl5000_1.enable();    // this turns on the SGTL5000, which is the audio codec on the audio board
+  sgtl5000_1.volume(1);   // this sets the output volume (it can be between 0 and 1)
+  sgtl5000_1.inputSelect(AUDIO_INPUT_LINEIN); // selects the audio input, we always use Line In
+  analogReadResolution(12); // configure the pots to give 12 bit readings
+  pinMode(0, INPUT_PULLUP); // internal pull-up resistor for footswitch
+  pinMode(1, INPUT_PULLUP); // internal pull-up resistor for toggle
+  pinMode(2, INPUT_PULLUP); // internal pull-up resistor for toggle
+  pinMode(3, OUTPUT);       // pin 3 (the LED) is an output;
+  
+  // test stuff
+  sgtl5000_1.adcHighPassFilterDisable();
+  sgtl5000_1.audioPostProcessorEnable();
+  sgtl5000_1.audioPreProcessorEnable();
+  sgtl5000_1.autoVolumeEnable();
+
+  // sine wave / note detection
+  waveform1.begin(1, 5, WAVEFORM_SINE);
+  notefreq1.begin(.60);
+  
+  // input / feedback mixer
+  mixer1.gain(0,1);
+  mixer3.gain(0,1);
+
+  // plate verb settings
+  freeverb1.size(1);
+  freeverb2.size(1);
+
+  // pre-note-freq reverb filter 
+  biquad1.setLowpass(0, 1000, 0.7);
+
+  // reverb output hpf 
+  biquad2.setHighpass(0, 120, 0.8); 
+  biquad4.setHighpass(0, 120, 0.8); 
+
+  //depth
+  dc1.amplitude(1);
+  waveform1.offset(1);
+
+  // make-up gain
+  amp1.gain(2);
+  amp2.gain(2);
+  
+}
+
+void loop() {
+  
+    // feedback
+    reverbtime = (float) analogRead(A0) / 4095;
+    mixer1.gain(1,reverbtime*1.45);
+    mixer3.gain(1,reverbtime*1.45);
+
+    // low pass filter
+    lpf = (analogRead(A1) * 2) + 1000;
+    biquad2.setLowpass(1, lpf, 2.2);
+    biquad4.setLowpass(1, lpf, 2.2);
+
+    if(!digitalRead(0))                     // if footswitch pressed
+    {
+      digitalWrite(LED, HIGH);
+      checkToggle();
+      if(right) division = 2;
+      else if(middle) division = 3;
+      else if(left) division = 4;
+    }
+    else {
+      division = 7 - ((analogRead(A2) >> 10) +2);  // pot controls division, 5 to 2
+      digitalWrite(LED, LOW);
+    }
+  
+    // read fundamental frequency
+    if (notefreq1.available()) 
+    {
+      note = notefreq1.read();
+       
+      //division
+      division = 2 << division;             // the 4 divisions are 64 to 8
+
+      // set waveform frequency
+      note = note / division;
+      waveform1.frequency(note);
+    }
+
+    // depth
+    depth = (float) analogRead(A3) / 4095;
+    mixer2.gain(0,1-depth);
+    mixer2.gain(1,depth);
+  
+}
