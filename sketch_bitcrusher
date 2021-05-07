@@ -1,0 +1,109 @@
+// you need to create the "bitcrusher2" library before this sketch will run
+// A0 = bit depth
+// A1 = sample rate
+// A2 = LPF
+// A3 = HPF
+// toggle and footswitch do nothing as yet
+
+#define LED 3
+#include <Bounce.h>
+
+#include <effect_bitcrusher2.h>
+
+#include <Audio.h>
+#include <Wire.h>
+#include <SPI.h>
+#include <SD.h>
+#include <SerialFlash.h>
+
+// GUItool: begin automatically generated code
+AudioInputI2S            i2s1;           //xy=368,395
+AudioEffectBitcrusher2    bitcrusher2; //xy=527,449
+AudioEffectBitcrusher2    bitcrusher1;    //xy=529,343
+AudioFilterBiquad        biquad1;        //xy=690,342
+AudioFilterBiquad        biquad2; //xy=694,451
+AudioAmplifier           amp2; //xy=836,448
+AudioAmplifier           amp1;           //xy=848,343
+AudioOutputI2S           i2s2;           //xy=1003,397
+AudioConnection          patchCord1(i2s1, 0, bitcrusher1, 0);
+AudioConnection          patchCord2(i2s1, 1, bitcrusher2, 0);
+AudioConnection          patchCord3(bitcrusher2, biquad2);
+AudioConnection          patchCord4(bitcrusher1, biquad1);
+AudioConnection          patchCord5(biquad1, amp1);
+AudioConnection          patchCord6(biquad2, amp2);
+AudioConnection          patchCord7(amp2, 0, i2s2, 1);
+AudioConnection          patchCord8(amp1, 0, i2s2, 0);
+AudioControlSGTL5000     sgtl5000_1;     //xy=871,578
+// GUItool: end automatically generated code
+
+
+
+
+Bounce footswitch = Bounce(0, 50);  // debounce the footswitch
+Bounce D1 = Bounce(1, 50);          // debounce the toggle switch
+Bounce D2 = Bounce(2, 50);          // "  "  "  "  "  "  "  "  "
+
+// this section includes the function to check the toggle position
+bool right;
+bool middle;
+bool left;
+void checkToggle () {               // this is our function to check toggle position...
+D1.update();  D2.update();          // check digital inputs connected to toggle (can delete I think)
+if(digitalRead(1) && !digitalRead(2))   {right = 1; middle = 0; left = 0;}    // toggle is right
+if(digitalRead(1) && digitalRead(2))  {right = 0; middle = 1; left = 0;}      // toggle is in the middle
+if(!digitalRead(1) && digitalRead(2))   {right = 0; middle = 0; left = 1;}    // toggle is left
+}
+
+byte bitdepth = 16;                 // used to set bit depth
+int samplerate = 44100;             // used to set sample rate
+int lastsamplerate = 44100;         // used to set sample rate
+int hpf;                            // used to set hpf cutoff frequency
+int lpf;                            // used to set lpf cutoff frequency
+
+void setup() {
+ 
+  AudioMemory(40); // the "40" represents how much internal memory (in the Teensy, not the external RAM chip) is allotted for audio recording. It is measured in sample blocks, each providing 2.9ms of audio.
+  sgtl5000_1.enable();    // this turns on the SGTL5000, which is the audio codec on the audio board
+  sgtl5000_1.volume(1);   // this sets the output volume (it can be between 0 and 1)
+  sgtl5000_1.inputSelect(AUDIO_INPUT_LINEIN); // selects the audio input, we always use Line In
+  analogReadResolution(12); // configure the pots to give 12 bit readings
+  pinMode(0, INPUT_PULLUP); // internal pull-up resistor for footswitch
+  pinMode(1, INPUT_PULLUP); // internal pull-up resistor for toggle
+  pinMode(2, INPUT_PULLUP); // internal pull-up resistor for toggle
+  pinMode(3, OUTPUT);       // pin 3 (the LED) is an output;
+  Serial.begin(9600);       // initiate the serial monitor. USB is always 12 Mbit/sec
+
+  sgtl5000_1.audioPostProcessorEnable();
+  
+  analogReadAveraging(32);  
+
+  // constant filters
+  biquad1.setLowpass(0, 7000, 0.05);                  // set lpf
+  biquad2.setLowpass(0, 7000, 0.05);                  // set lpf  
+
+  // make-up gain
+  amp1.gain(2);
+  amp2.gain(2);
+  
+}
+
+void loop() {
+  
+  // do bitcrushing
+  bitdepth = (analogRead(A0) >> 8) + 1;             // bitdepth pot ranges from 1 to 16
+  bitcrusher1.bits(bitdepth);                       // set bit depth
+  bitcrusher2.bits(bitdepth);                       // set bit depth
+
+  samplerate = (analogRead(A1) << 1) + 1000;        // samplerate pot ranges from 1000 to 9190
+  bitcrusher1.sampleRate(samplerate);               // set sample rate
+  bitcrusher2.sampleRate(samplerate);               // set sample rate
+  
+
+  // do filtering
+  lpf = (analogRead(A2) << 1) + 1000;               // lpf pot ranges from 500 to 8240hz
+  hpf = (analogRead(A3)  >> 2) + 120;               // hpf pot ranges form 20 to 4115
+  biquad1.setLowpass(1, lpf, 0.7);                  // set lpf 
+  biquad1.setHighpass(2, hpf, 0.5);                 // set hpf 
+  biquad2.setLowpass(1, lpf, 0.7);                  // set lpf   
+  biquad2.setHighpass(2, hpf, 0.5);                 // set hpf
+}
