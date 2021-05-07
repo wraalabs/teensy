@@ -1,0 +1,240 @@
+// Create the "effect_lofi_delay" library for this sketch to work
+// A0 = Size (time between potential glitches)
+// A1 = Lowpass filter
+// A2 = Density (probability of glitching
+// A3 = Sample rate
+// Toggle = Different feedback settings*
+// Footswitch = Infinite feedback
+
+// *Toggle left = always some feedback, footswitch = max feedback and silences input
+// Toggle middle = usually no feedback, footswitch = max feedback with input still present
+// Toggle left = usually no feedback, footswitch = max feedback and silences input 
+
+
+#define LED 3
+#include <Bounce.h>
+#include "effect_lofi_delay.h"
+
+#include <Audio.h>
+#include <Wire.h>
+#include <SPI.h>
+#include <SD.h>
+#include <SerialFlash.h>
+
+// GUItool: begin automatically generated code
+AudioInputI2S            i2s1;           //xy=125,163
+AudioEffectLofiDelay         lofidelay1;         //xy=223,379
+AudioMixer4              mixer4; //xy=421,152
+AudioEffectFade          fade6; //xy=437,546
+AudioEffectFade          fade4; //xy=438,441
+AudioEffectFade          fade5; //xy=438,496
+AudioEffectFade          fade3; //xy=439,392
+AudioEffectFade          fade1;          //xy=440,272
+AudioEffectFade          fade2; //xy=440,327
+AudioMixer4              mixer2; //xy=639,473
+AudioMixer4              mixer1;         //xy=640,384
+AudioMixer4              mixer3; //xy=794,414
+AudioEffectBitcrusher    bitcrusher1;    //xy=982,411
+AudioFilterBiquad        biquad1;        //xy=1150,409
+AudioOutputI2S           i2s2;           //xy=1307,406
+AudioConnection          patchCord1(i2s1, 0, mixer4, 0);
+AudioConnection          patchCord2(lofidelay1, 0, fade1, 0);
+AudioConnection          patchCord3(lofidelay1, 1, fade2, 0);
+AudioConnection          patchCord4(lofidelay1, 2, fade3, 0);
+AudioConnection          patchCord5(lofidelay1, 3, fade4, 0);
+AudioConnection          patchCord6(lofidelay1, 4, fade5, 0);
+AudioConnection          patchCord7(lofidelay1, 5, fade6, 0);
+AudioConnection          patchCord8(mixer4, lofidelay1);
+AudioConnection          patchCord9(fade6, 0, mixer2, 1);
+AudioConnection          patchCord10(fade4, 0, mixer1, 3);
+AudioConnection          patchCord11(fade5, 0, mixer2, 0);
+AudioConnection          patchCord12(fade3, 0, mixer1, 2);
+AudioConnection          patchCord13(fade1, 0, mixer1, 0);
+AudioConnection          patchCord14(fade2, 0, mixer1, 1);
+AudioConnection          patchCord15(mixer2, 0, mixer3, 1);
+AudioConnection          patchCord16(mixer1, 0, mixer3, 0);
+AudioConnection          patchCord17(mixer3, 0, mixer4, 1);
+AudioConnection          patchCord18(mixer3, bitcrusher1);
+AudioConnection          patchCord19(bitcrusher1, biquad1);
+AudioConnection          patchCord20(biquad1, 0, i2s2, 0);
+AudioControlSGTL5000     sgtl5000_1;     //xy=880,637
+// GUItool: end automatically generated code
+
+Bounce footswitch = Bounce(0, 50);  // debounce the footswitch
+Bounce D1 = Bounce(1, 50);          // debounce the toggle switch
+Bounce D2 = Bounce(2, 50);          // "  "  "  "  "  "  "  "  "
+
+// this section includes the function to check the toggle position
+bool right;
+bool middle;
+bool left;
+void checkToggle () {               // this is our function to check toggle position...
+D1.update();  D2.update();          // check digital inputs connected to toggle (can delete I think)
+if(digitalRead(1) && !digitalRead(2))   {right = 1; middle = 0; left = 0;}    // toggle is right
+if(digitalRead(1) && digitalRead(2))  {right = 0; middle = 1; left = 0;}      // toggle is in the middle
+if(!digitalRead(1) && digitalRead(2))   {right = 0; middle = 0; left = 1;}    // toggle is left
+}
+
+uint16_t delay_max = 65535; // number of samples at 44100 samples a second
+int16_t delay_line[65535] = {};
+uint16_t delaytime = 1000;
+
+// glitch variables
+void fadeout();
+void fadein();
+
+//unsigned int glitchtime = 300;
+unsigned int fadetime = 25;
+unsigned int density = 50;
+
+unsigned int n_time;
+unsigned int sub_time;
+unsigned int up_time;
+
+unsigned long currentMillis = millis();
+
+byte whichfade = 0;   // 0 is fade in fade1, fade out 2, fade out 3. etc...
+byte lastfade = 1;
+
+//crush
+uint16_t samplerate;
+
+uint16_t lpf;
+
+float octup;
+float octdown;
+float feedback;
+
+
+void setup() {
+ 
+  AudioMemory(40); // the "40" represents how much internal memory (in the Teensy, not the external RAM chip) is allotted for audio recording. It is measured in sample blocks, each providing 2.9ms of audio.
+  sgtl5000_1.enable();    // this turns on the SGTL5000, which is the audio codec on the audio board
+  sgtl5000_1.volume(1);   // this sets the output volume (it can be between 0 and 1)
+  sgtl5000_1.inputSelect(AUDIO_INPUT_LINEIN); // selects the audio input, we always use Line In
+  analogReadResolution(12); // configure the pots to give 12 bit readings
+  pinMode(0, INPUT_PULLUP); // internal pull-up resistor for footswitch
+  pinMode(1, INPUT_PULLUP); // internal pull-up resistor for toggle
+  pinMode(2, INPUT_PULLUP); // internal pull-up resistor for toggle
+  pinMode(3, OUTPUT);       // pin 3 (the LED) is an output;
+  Serial.begin(9600);       // initiate the serial monitor. USB is always 12 Mbit/sec
+  analogReadAveraging(32);  
+
+  sgtl5000_1.adcHighPassFilterDisable();
+  sgtl5000_1.audioPostProcessorEnable();
+  sgtl5000_1.audioPreProcessorEnable();
+  sgtl5000_1.autoVolumeEnable();
+
+  lofidelay1.acidMode(1);
+  lofidelay1.begin(delay_line, delay_max);
+  
+
+  
+  // output mixers
+  mixer1.gain(0,1);
+  mixer1.gain(1,1);
+  mixer1.gain(2,1);
+  mixer1.gain(3,1);
+
+  mixer2.gain(0,1);
+  mixer2.gain(1,1);
+
+  mixer3.gain(0,1);
+  mixer3.gain(1,1);
+
+  // feedback mixer
+  mixer4.gain(0,1);
+  mixer4.gain(1,0);
+
+  //initialise delays
+  sub_time = (analogRead(A0) >> 2) + 50;
+  n_time = sub_time ;
+  up_time = sub_time / 2;
+  lofidelay1.setdelay(0, n_time);  
+  lofidelay1.setdelay(1, n_time);  
+  lofidelay1.setdelay(2, sub_time);
+  lofidelay1.setdelay(3, sub_time);
+  lofidelay1.setdelay(4, up_time); 
+  lofidelay1.setdelay(5, up_time);
+
+  bitcrusher1.bits(16);  
+  bitcrusher1.sampleRate(44100); 
+  
+}
+
+
+
+void loop() {
+
+  //delay / glitch times
+  sub_time = (analogRead(A0) >> 2) + 50;
+  n_time = sub_time ;
+  up_time = sub_time / 2;
+
+  if(millis() - currentMillis >= sub_time)              // time to glitch
+  {
+
+    density = analogRead(A2);
+    if(density >= random(4095))
+    {
+      digitalWrite(LED, HIGH); 
+          
+      fadeout();
+
+      lastfade = whichfade;
+      while(whichfade == lastfade)
+      {whichfade = random(6);}
+      
+      fadein();
+    }
+    currentMillis = millis();    
+  }
+
+  // crush
+  samplerate = (analogRead(A3) * 5) + 1000;
+  bitcrusher1.sampleRate(samplerate); 
+
+  // filter
+  lpf = (analogRead(A1) * 2) + 1000 ;                               // 1000 to ~9000 hz.  ("analogRead(A1)"  will return values from 0 to 4095
+  biquad1.setLowpass(0, lpf, 0.7);                                  // q = 0.7
+    
+  // footswitch
+  if(!digitalRead(0))  
+  {
+    checkToggle();
+    if(left) {mixer4.gain(0,1); mixer4.gain(1,1);}                  // turn on feedback
+    if(middle) {mixer4.gain(0,1); mixer4.gain(1,1);}
+    if(right) {mixer4.gain(0,0); mixer4.gain(1,1);}
+  }
+  else 
+  { 
+    checkToggle();
+    if(left) {mixer4.gain(0,1); mixer4.gain(1,0.8);}                // feedback always slightly on if toggle left
+    else {mixer4.gain(1,0); mixer4.gain(0,1); }                     // turn off feedback
+  }
+
+  if(millis() - currentMillis >= 20) digitalWrite(LED, LOW);        // turn LED off (flashing)
+   
+}
+
+
+// glitch functions
+void fadeout ()
+{
+  if(whichfade == 0) {fade1.fadeOut(fadetime);   }
+  if(whichfade == 1) {fade2.fadeOut(fadetime);   }
+  if(whichfade == 2) {fade3.fadeOut(fadetime); }
+  if(whichfade == 3) {fade4.fadeOut(fadetime); }
+  if(whichfade == 4) {fade5.fadeOut(fadetime); }
+  if(whichfade == 5) {fade6.fadeOut(fadetime); }
+}
+
+void fadein ()
+{
+  if(whichfade == 0) {fade1.fadeIn(fadetime);  lofidelay1.setdelay(0, n_time);  }
+  if(whichfade == 1) {fade2.fadeIn(fadetime);  lofidelay1.setdelay(1, n_time);  }
+  if(whichfade == 2) {fade3.fadeIn(fadetime);  lofidelay1.setdelay(2, sub_time);}
+  if(whichfade == 3) {fade4.fadeIn(fadetime);  lofidelay1.setdelay(3, sub_time);}
+  if(whichfade == 4) {fade5.fadeIn(fadetime);  lofidelay1.setdelay(4, up_time); }
+  if(whichfade == 5) {fade6.fadeIn(fadetime);  lofidelay1.setdelay(5, up_time); }
+}
