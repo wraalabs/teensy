@@ -143,8 +143,8 @@ void loop() {
 
     // low pass filter
     lpf = (analogRead(A1) * 2) + 1000;
-    biquad2.setLowpass(1, lpf, 2.2);
-    biquad4.setLowpass(1, lpf, 2.2);
+    biquad2.setLowpass(1, lpf, 0.7);
+    biquad4.setLowpass(1, lpf, 0.7);
 
     if(!digitalRead(0))                     // if footswitch pressed
     {
