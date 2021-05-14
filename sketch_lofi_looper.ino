@@ -112,7 +112,7 @@ void loop() {
   if(buttonstate && footswitch.risingEdge())
   buttonstate = 0;
   
-  if(footswitch.fallingEdge() && !recstate && !playstate && !buttonstate) // start recording                footswitch.fallingEdge()
+  if(footswitch.fallingEdge() && !recstate && !playstate && !buttonstate) // start recording             
   {
     lofilooper1.changeState(1, 0);
     recstate = 1;   
@@ -135,7 +135,7 @@ void loop() {
 
   // buffer full
   bufferfull = lofilooper1.isBufferFull();
-  if(recstate && bufferfull)                              // buffer maxed while rec'ing
+  if(recstate && bufferfull)                                              // if buffer maxed while rec'ing
   {
     lofilooper1.changeState(0, 1);   
     recstate = 0;
@@ -151,7 +151,7 @@ void loop() {
   
 
   // vibrato
-  rate = (float) (analogRead(A0) / 1000) + 0.5;  
+  rate = (float) (analogRead(A0) / 1000) + 1;  
   depth = (float) analogRead(A1) / 400;
   vibrato1.modulation(rate, depth);
 
@@ -167,10 +167,9 @@ void loop() {
   // LEDS
   if(recstate) digitalWrite(LED, HIGH);                                         // LED on if rec'ing
   
-  else if(playstate && millis() - currentMillis < 50) digitalWrite(LED, HIGH);  // flash LED for play
-  
-  else if(playstate && millis() - currentMillis > 50) 
-  {digitalWrite(LED, LOW);currentMillis = millis();}
+   if(playstate && millis() - currentMillis < 50) digitalWrite(LED, HIGH);      // flash LED for play
+   if(playstate && millis() - currentMillis >= 50) digitalWrite(LED, LOW);
+   if (playstate && millis() - currentMillis >= 100) currentMillis = millis();
   
   else if(!playstate && !recstate) digitalWrite(LED, LOW);                      // turn LED off if idle
   
