@@ -54,7 +54,7 @@ void AudioEffectBitcrusher2::update(void)
   block = receiveWritable();
   if (!block) return;
 
-  if (sampleStep2 <= 1) { //no sample rate mods, just crush the bitdepth.                        <------ just crush
+  if (sampleStep2 <= 1) { //no sample rate mods, just crush the bitdepth.                        <------ just crush 
     for (i=0; i < AUDIO_BLOCK_SAMPLES; i++) {
       // shift bits right to cut off fine detail sampleSquidge is a
       // uint32 so sign extension will not occur, fills with zeroes.
