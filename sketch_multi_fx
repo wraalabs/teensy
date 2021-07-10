@@ -1,0 +1,442 @@
+#define LED 3
+#include <Bounce.h>
+#include "effect_platervbstereo2.h"
+#include "analyze_notefreq2.h"
+#include "effect_delay2.h"
+#include "effect_lofi_delay.h"
+#include "effect_bitcrusher2.h"
+
+#include <Audio.h>
+#include <Wire.h>
+#include <SPI.h>
+#include <SD.h>
+#include <SerialFlash.h>
+
+
+
+// GUItool: begin automatically generated code
+AudioInputI2S            i2s2;           //xy=86,391
+AudioMixer4              mixer3;         //xy=229,541
+AudioMixer4              mixer6; //xy=252,762
+AudioSynthWaveformDc     dc1;            //xy=344,336
+AudioSynthWaveform       waveform1;      //xy=354,407
+AudioEffectLofiDelay         lofidelay1; //xy=352,908
+AudioEffectDelay2         delay1;         //xy=368,606
+AudioEffectPlateReverb2      freeverb1;      //xy=392,152
+AudioMixer4              mixer1;         //xy=396,212
+AudioMixer4              mixer2;         //xy=508,346
+AudioEffectFade          fade4; //xy=541,703
+AudioEffectFade          fade3; //xy=543,657
+AudioEffectFade          fade1;          //xy=544,559
+AudioEffectFade          fade2; //xy=544,608
+AudioEffectFade          fade5;  //xy=558,858
+AudioEffectFade          fade6; //xy=562,898
+AudioEffectFade          fade10; //xy=563,1102
+AudioEffectFade          fade7; //xy=564,942
+AudioEffectFade          fade8; //xy=564,999
+AudioEffectFade          fade9;  //xy=570,1046
+AudioFilterBiquad        biquad1;        //xy=635,145
+AudioEffectMultiply      multiply1;      //xy=643,252
+AudioMixer4              mixer4; //xy=730,518
+AudioMixer4              mixer7; //xy=756,862
+AudioMixer4              mixer8; //xy=762,980
+AudioFilterBiquad        biquad2;        //xy=797,251
+AudioAnalyzeNoteFrequency2 notefreq1;      //xy=818,133
+AudioMixer4              mixer9;  //xy=903,924
+AudioAmplifier           amp1;           //xy=948,250
+AudioEffectBitcrusher2    bitcrusher1;    //xy=1093,915
+AudioFilterBiquad        biquad3;        //xy=1158.88330078125,777.88330078125
+AudioMixer4              mixer5; //xy=1312,517.0000305175781
+AudioOutputI2S           i2s1;           //xy=1503,521.0000305175781
+AudioConnection          patchCord1(i2s2, 0, mixer1, 0);
+AudioConnection          patchCord2(i2s2, 0, mixer3, 0);
+AudioConnection          patchCord3(i2s2, 0, mixer6, 0);
+AudioConnection          patchCord4(mixer3, delay1);
+AudioConnection          patchCord5(mixer6, lofidelay1);
+AudioConnection          patchCord6(dc1, 0, mixer2, 0);
+AudioConnection          patchCord7(waveform1, 0, mixer2, 1);
+AudioConnection          patchCord8(lofidelay1, 0, fade5, 0);
+AudioConnection          patchCord9(lofidelay1, 1, fade6, 0);
+AudioConnection          patchCord10(lofidelay1, 2, fade7, 0);
+AudioConnection          patchCord11(lofidelay1, 3, fade8, 0);
+AudioConnection          patchCord12(lofidelay1, 4, fade9, 0);
+AudioConnection          patchCord13(lofidelay1, 5, fade10, 0);
+AudioConnection          patchCord14(delay1, 0, fade1, 0);
+AudioConnection          patchCord15(delay1, 1, fade2, 0);
+AudioConnection          patchCord16(delay1, 2, fade3, 0);
+AudioConnection          patchCord17(delay1, 3, fade4, 0);
+AudioConnection          patchCord18(freeverb1, 0, mixer1, 1);
+AudioConnection          patchCord19(freeverb1, biquad1);
+AudioConnection          patchCord20(freeverb1, 0, multiply1, 0);
+AudioConnection          patchCord21(mixer1, freeverb1);
+AudioConnection          patchCord22(mixer2, 0, multiply1, 1);
+AudioConnection          patchCord23(fade4, 0, mixer4, 3);
+AudioConnection          patchCord24(fade3, 0, mixer4, 2);
+AudioConnection          patchCord25(fade1, 0, mixer4, 0);
+AudioConnection          patchCord26(fade2, 0, mixer4, 1);
+AudioConnection          patchCord27(fade5, 0, mixer7, 0);
+AudioConnection          patchCord28(fade6, 0, mixer7, 1);
+AudioConnection          patchCord29(fade10, 0, mixer8, 1);
+AudioConnection          patchCord30(fade7, 0, mixer7, 2);
+AudioConnection          patchCord31(fade8, 0, mixer7, 3);
+AudioConnection          patchCord32(fade9, 0, mixer8, 0);
+AudioConnection          patchCord33(biquad1, notefreq1);
+AudioConnection          patchCord34(multiply1, biquad2);
+AudioConnection          patchCord35(mixer4, 0, mixer3, 1);
+AudioConnection          patchCord36(mixer4, 0, mixer5, 1);
+AudioConnection          patchCord37(mixer7, 0, mixer9, 0);
+AudioConnection          patchCord38(mixer8, 0, mixer9, 1);
+AudioConnection          patchCord39(biquad2, amp1);
+AudioConnection          patchCord40(mixer9, 0, mixer6, 1);
+AudioConnection          patchCord41(mixer9, bitcrusher1);
+AudioConnection          patchCord42(amp1, 0, mixer5, 0);
+AudioConnection          patchCord43(bitcrusher1, biquad3);
+AudioConnection          patchCord44(biquad3, 0, mixer5, 2);
+AudioConnection          patchCord45(mixer5, 0, i2s1, 0);
+AudioControlSGTL5000     sgtl5000_1;     //xy=1503,939
+// GUItool: end automatically generated code
+
+
+
+Bounce footswitch = Bounce(0, 50);  // debounce the footswitch
+Bounce D1 = Bounce(1, 50);          // debounce the toggle switch
+Bounce D2 = Bounce(2, 50);          // "  "  "  "  "  "  "  "  "
+
+// this section includes the function to check the toggle position
+bool right;
+bool middle;
+bool left;
+void checkToggle () {               // this is our function to check toggle position...
+D1.update();  D2.update();          // check digital inputs connected to toggle (can delete I think)
+if(digitalRead(1) && !digitalRead(2))   {right = 1; middle = 0; left = 0;}    // toggle is right
+if(digitalRead(1) && digitalRead(2))  {right = 0; middle = 1; left = 0;}      // toggle is in the middle
+if(!digitalRead(1) && digitalRead(2))   {right = 0; middle = 0; left = 1;}    // toggle is left
+}
+
+// glitch delaty variables
+void fadeout();
+void fadein();
+unsigned int glitchtime = 300;
+unsigned int fadetime = 50;
+unsigned int density = 50;
+unsigned int delaytime = 1000;
+unsigned long currentMillis = millis();
+byte whichfade = 0;   // 0 is fade in fade1, fade out 2, fade out 3. etc...
+byte lastfade = 1;
+bool latchstate = 0;  // the state of the footswitch in latching mode. 0 = off, 1 = on
+
+// ghostcode variables
+float reverbtime;
+float note;
+byte division;
+int lpf;
+float depth;
+bool ghost_onoff;
+
+// acid rain variables
+uint16_t delay_max = 65535; // number of samples at 44100 samples a second
+int16_t delay_line[65535] = {};
+//uint16_t delaytime = 1000;
+void acidfadeout();
+void acidfadein();
+//unsigned int fadetime = 25;
+//unsigned int density = 50;
+uint16_t n_time;
+uint16_t sub_time;
+uint16_t up_time;
+//unsigned long currentMillis = millis();
+//byte whichfade = 0;   // 0 is fade in fade1, fade out 2, fade out 3. etc...
+//byte lastfade = 1;
+uint16_t samplerate;
+//uint16_t lpf;
+float octup;
+float octdown;
+float feedback;
+
+
+extern "C" uint32_t set_arm_clock(uint32_t frequency);
+
+void setup() {
+
+   set_arm_clock(146000000);
+ 
+  AudioMemory(1300); // the "40" represents how much internal memory (in the Teensy, not the external RAM chip) is allotted for audio recording. It is measured in sample blocks, each providing 2.9ms of audio.
+  sgtl5000_1.enable();    // this turns on the SGTL5000, which is the audio codec on the audio board
+  sgtl5000_1.volume(1);   // this sets the output volume (it can be between 0 and 1)
+  sgtl5000_1.inputSelect(AUDIO_INPUT_LINEIN); // selects the audio input, we always use Line In
+  analogReadResolution(12); // configure the pots to give 12 bit readings
+  pinMode(0, INPUT_PULLUP); // internal pull-up resistor for footswitch
+  pinMode(1, INPUT_PULLUP); // internal pull-up resistor for toggle
+  pinMode(2, INPUT_PULLUP); // internal pull-up resistor for toggle
+  pinMode(3, OUTPUT);       // pin 3 (the LED) is an output;
+  Serial.begin(9600);       // initiate the serial monitor. USB is always 12 Mbit/sec
+
+  sgtl5000_1.adcHighPassFilterDisable();
+  sgtl5000_1.audioPostProcessorEnable();
+  sgtl5000_1.audioPreProcessorEnable();
+  sgtl5000_1.autoVolumeEnable();
+  analogReadAveraging(32);  
+
+  // output mkixer for all 3
+  mixer5.gain(0,1);
+  mixer5.gain(1,1);
+  mixer5.gain(2,1);
+
+////////////////////////////////////////////////// GLITCH DELAY
+  // preliminary delay line fades
+  fadeout();
+  fadein();
+  // input/feedback mixer 
+  mixer3.gain(0, 1.5);
+  mixer3.gain(1, 0);
+  // 8x mixer (1)
+  mixer4.gain(0, 1);
+  mixer4.gain(1, 1);
+  mixer4.gain(2, 1);
+  mixer4.gain(3, 1);
+
+
+ ///////////////////////////////////////////////// GHOST
+  // sine wave / note detection
+  waveform1.begin(1, 5, WAVEFORM_SINE);
+  notefreq1.begin(.60);
+  // input / feedback mixer
+  mixer1.gain(0,1);
+  // plate verb settings
+  freeverb1.size(1);
+  // pre-note-freq reverb filter 
+  biquad1.setLowpass(0, 1000, 0.7);
+  // reverb output hpf 
+  biquad2.setHighpass(0, 120, 0.8); 
+  //depth
+  dc1.amplitude(1);
+  waveform1.offset(1);
+  // make-up gain
+  amp1.gain(2);
+
+
+
+/////////////////////////////////////////////////// ACID
+  lofidelay1.acidMode(1);
+  lofidelay1.begin(delay_line, delay_max);
+  // output mixers
+  mixer7.gain(0,1);
+  mixer7.gain(1,1);
+  mixer7.gain(2,1);
+  mixer7.gain(3,1);
+  
+  mixer8.gain(0,1);
+  mixer8.gain(1,1);
+
+  mixer9.gain(0,1);
+  mixer9.gain(1,1);
+
+  // feedback mixer
+  mixer6.gain(0,1);
+  mixer6.gain(1,0);
+
+  //initialise delays
+  sub_time = (analogRead(A0) >> 2) + 50;
+  n_time = sub_time ;
+  up_time = sub_time / 2;
+  lofidelay1.setdelay(0, n_time);  
+  lofidelay1.setdelay(1, n_time);  
+  lofidelay1.setdelay(2, sub_time);
+  lofidelay1.setdelay(3, sub_time);
+  lofidelay1.setdelay(4, up_time); 
+  lofidelay1.setdelay(5, up_time);
+
+  bitcrusher1.bits(16);  
+  bitcrusher1.sampleRate(44100); 
+
+}
+
+void loop() {
+  
+ checkToggle();
+ ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////// GLITCH DELAY
+ if(left) 
+ {
+    freeverb1.turnOn(0);                  // reverb off    
+    notefreq1.on_off(0);                  // note freq off              
+    delay1.onoroff(1);                    // delay on 
+    mixer5.gain(0,0);mixer5.gain(1,1);mixer5.gain(2,0);
+ //   lofidelay1.onoroff(0);                // lofi delay off
+
+ if(millis() - currentMillis >= glitchtime)              //(count >= glitchtime);  // time to glitch
+  {
+    density = analogRead(A2);
+    delaytime = (analogRead(A3) >> 3) + 400;
+    if(density >= random(4095))
+    {
+      fadeout();
+
+      lastfade = whichfade;
+      while(whichfade == lastfade)
+      {whichfade = random(4);}
+      
+      fadein();
+    }
+    currentMillis = millis();    
+  }
+
+  // rate of glitching
+  glitchtime = (analogRead(A0) >> 3) + 80;  // 50 to 561
+
+  // smoothing (length of fades)
+  fadetime = glitchtime / (64 - (analogRead(A1) >>  6)) ; // 64 to  1
+
+  footswitch.update();
+                                                                                      
+    if(!digitalRead(0)) {mixer3.gain(0,0); mixer3.gain(1,1); digitalWrite(LED,HIGH);}                                    // turn on feedback
+    else{mixer3.gain(0,1); mixer3.gain(1,0); digitalWrite(LED,LOW);}    
+      
+ }
+ ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////// GHOST CODE
+ if(middle) 
+ {
+    freeverb1.turnOn(1);                  // reverb on     
+    notefreq1.on_off(1);                  // note freq on  
+    delay1.onoroff(0);                    // delay off   
+    mixer5.gain(0,1);mixer5.gain(1,0);mixer5.gain(2,0);
+//    lofidelay1.onoroff(0);                // lofi delay off
+
+  // feedback
+    reverbtime = (float) analogRead(A0) / 4095;
+    mixer1.gain(1,reverbtime*1.45);
+
+    // low pass filter
+    lpf = (analogRead(A1) * 2) + 1000;
+    biquad2.setLowpass(1, lpf, 0.7);
+
+    if(!digitalRead(0))                     // if footswitch pressed
+    {
+      digitalWrite(LED, HIGH);
+      division = 2; 
+    }
+    else {
+      division = 7 - ((analogRead(A2) >> 10) +2);  // pot controls division, 5 to 2
+      digitalWrite(LED, LOW);
+    }
+  
+    // read fundamental frequency
+    if (notefreq1.available()) 
+    {
+      note = notefreq1.read();
+       
+      //division
+      division = 2 << division;             // the 4 divisions are 64 to 8
+
+      // set waveform frequency
+      note = note / division;
+      waveform1.frequency(note);
+    }
+
+    // depth
+    depth = (float) analogRead(A3) / 4095;
+    mixer2.gain(0,1-depth);
+    mixer2.gain(1,depth);
+
+ }
+ ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////// ACID RAIN
+ if(right) 
+ {
+    freeverb1.turnOn(0);                  // reverb off    
+    notefreq1.on_off(0);                  // note freq off    
+    delay1.onoroff(0);                    // delay off    
+    mixer5.gain(0,0);mixer5.gain(1,0);mixer5.gain(2,1);
+//    lofidelay1.onoroff(1);                // lofi delay on
+
+    //delay / glitch times
+  sub_time = (analogRead(A0) >> 2) + 50;
+  n_time = sub_time ;
+  up_time = sub_time / 2;
+
+  if(millis() - currentMillis >= sub_time)              // time to glitch
+  {
+
+    density = analogRead(A2);
+    if(density >= random(4095))
+    {
+      digitalWrite(LED, HIGH); 
+          
+      acidfadeout();
+
+      lastfade = whichfade;
+      while(whichfade == lastfade)
+      {whichfade = random(6);}
+      
+      acidfadein();
+    }
+    currentMillis = millis();    
+  }
+
+  // crush
+  samplerate = (analogRead(A3) * 5) + 1000;
+  bitcrusher1.sampleRate(samplerate); 
+
+  // filter
+  lpf = (analogRead(A1) * 2) + 1000 ;                               // 1000 to ~9000 hz.  ("analogRead(A1)"  will return values from 0 to 4095
+  biquad3.setLowpass(0, lpf, 0.7);                                  // q = 0.7
+    
+  // footswitch
+  if(!digitalRead(0))  
+  {
+    mixer6.gain(0,1);     // still pass input through on runaway feedback
+    mixer6.gain(1,1);
+  }
+  else 
+  { 
+    mixer6.gain(1,0); mixer6.gain(0,1);                     // turn off feedback
+  }
+
+  if(millis() - currentMillis >= 20) digitalWrite(LED, LOW);        // turn LED off (flashing)
+ }
+
+
+
+
+
+}
+
+
+
+
+
+
+// Glitch fades
+void fadeout ()
+{
+  if(whichfade == 0) {fade1.fadeOut(fadetime); delay1.delay(2, delaytime * .29); }
+  if(whichfade == 1) {fade2.fadeOut(fadetime); delay1.delay(3, delaytime * .53); }   
+  if(whichfade == 2) {fade3.fadeOut(fadetime); delay1.delay(0, delaytime * .74); }
+  if(whichfade == 3) {fade4.fadeOut(fadetime); delay1.delay(1, delaytime * 1);   }
+}
+void fadein ()
+{
+  if(whichfade == 0) {fade1.fadeIn(fadetime); }
+  if(whichfade == 1) {fade2.fadeIn(fadetime); }
+  if(whichfade == 2) {fade3.fadeIn(fadetime); }
+  if(whichfade == 3) {fade4.fadeIn(fadetime); }
+}
+
+// Acid fades
+void acidfadeout ()
+{
+  if(whichfade == 0) {fade5.fadeOut(fadetime);   }
+  if(whichfade == 1) {fade6.fadeOut(fadetime);   }
+  if(whichfade == 2) {fade7.fadeOut(fadetime); }
+  if(whichfade == 3) {fade8.fadeOut(fadetime); }
+  if(whichfade == 4) {fade9.fadeOut(fadetime); }
+  if(whichfade == 5) {fade10.fadeOut(fadetime); }
+}
+
+void acidfadein ()
+{
+  if(whichfade == 0) {fade5.fadeIn(fadetime);  lofidelay1.setdelay(0, n_time);  }
+  if(whichfade == 1) {fade6.fadeIn(fadetime);  lofidelay1.setdelay(1, n_time);  }
+  if(whichfade == 2) {fade7.fadeIn(fadetime);  lofidelay1.setdelay(2, sub_time);}
+  if(whichfade == 3) {fade8.fadeIn(fadetime);  lofidelay1.setdelay(3, sub_time);}
+  if(whichfade == 4) {fade9.fadeIn(fadetime);  lofidelay1.setdelay(4, up_time); }
+  if(whichfade == 5) {fade10.fadeIn(fadetime);  lofidelay1.setdelay(5, up_time); }
+}
