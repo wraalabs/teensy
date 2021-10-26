@@ -1,0 +1,302 @@
+#define LED 3
+#include <Bounce.h>
+#include "effect_lofi_delay.h"
+
+
+#include <Audio.h>
+#include <Wire.h>
+#include <SPI.h>
+#include <SD.h>
+#include <SerialFlash.h>
+
+// GUItool: begin automatically generated code
+AudioInputI2S            i2s1;           //xy=403,130
+AudioEffectLofiDelay         lofidelay1;         //xy=501,346
+AudioMixer4              mixer4; //xy=699,119
+AudioEffectFade          fade6; //xy=715,513
+AudioEffectFade          fade4; //xy=716,408
+AudioEffectFade          fade5; //xy=716,463
+AudioEffectFade          fade3; //xy=717,359
+AudioEffectFade          fade1;          //xy=718,239
+AudioEffectFade          fade2; //xy=718,294
+AudioMixer4              mixer2; //xy=917,440
+AudioMixer4              mixer1;         //xy=918,351
+AudioMixer4              mixer3; //xy=1072,381
+AudioOutputI2S           i2s2;           //xy=1254,376
+AudioConnection          patchCord1(i2s1, 0, mixer4, 0);
+AudioConnection          patchCord2(lofidelay1, 0, fade1, 0);
+AudioConnection          patchCord3(lofidelay1, 1, fade2, 0);
+AudioConnection          patchCord4(lofidelay1, 2, fade3, 0);
+AudioConnection          patchCord5(lofidelay1, 3, fade4, 0);
+AudioConnection          patchCord6(lofidelay1, 4, fade5, 0);
+AudioConnection          patchCord7(lofidelay1, 5, fade6, 0);
+AudioConnection          patchCord8(mixer4, lofidelay1);
+AudioConnection          patchCord9(fade6, 0, mixer2, 1);
+AudioConnection          patchCord10(fade4, 0, mixer1, 3);
+AudioConnection          patchCord11(fade5, 0, mixer2, 0);
+AudioConnection          patchCord12(fade3, 0, mixer1, 2);
+AudioConnection          patchCord13(fade1, 0, mixer1, 0);
+AudioConnection          patchCord14(fade2, 0, mixer1, 1);
+AudioConnection          patchCord15(mixer2, 0, mixer3, 1);
+AudioConnection          patchCord16(mixer1, 0, mixer3, 0);
+AudioConnection          patchCord17(mixer3, 0, i2s2, 0);
+AudioConnection          patchCord18(mixer3, 0, mixer4, 1);
+AudioControlSGTL5000     sgtl5000_1;     //xy=1158,604
+// GUItool: end automatically generated code
+
+
+
+
+Bounce footswitch = Bounce(0, 50);  // debounce the footswitch
+Bounce D1 = Bounce(1, 50);          // debounce the toggle switch
+Bounce D2 = Bounce(2, 50);          // "  "  "  "  "  "  "  "  "
+
+// this section includes the function to check the toggle position
+bool right;
+bool middle;
+bool left;
+void checkToggle () {               // this is our function to check toggle position...
+D1.update();  D2.update();          // check digital inputs connected to toggle (can delete I think)
+if(digitalRead(1) && !digitalRead(2))   {right = 1; middle = 0; left = 0;}    // toggle is right
+if(digitalRead(1) && digitalRead(2))  {right = 0; middle = 1; left = 0;}      // toggle is in the middle
+if(!digitalRead(1) && digitalRead(2))   {right = 0; middle = 0; left = 1;}    // toggle is left
+}
+
+uint16_t delay_max = 65535; // number of samples at 44100 samples a second
+int16_t delay_line[65535] = {};
+uint16_t delaytime = 1000;
+uint16_t lastdelaytime;
+
+// glitch variables
+//void fadeout();
+//void fadein();
+
+//unsigned int glitchtime = 300;
+unsigned int fadetime = 25;
+//unsigned int density = 50;
+
+unsigned int n_time;
+unsigned int sub_time;
+unsigned int up_time;
+
+unsigned long n_milis = millis();
+unsigned long sub_milis = millis();
+unsigned long up_milis = millis();
+
+byte whichfade = 0;   // 0 is fade in fade1, fade out 2, fade out 3. etc...
+byte lastfade = 1;
+byte octv;
+
+//crush
+//uint16_t samplerate;
+
+float octup;
+float octdown;
+float feedback;
+
+bool n_fade = 0;
+bool up_fade = 0;
+bool sub_fade = 0;
+
+bool ncanfade = 1;
+
+
+void setup() {
+ 
+  AudioMemory(40); // the "40" represents how much internal memory (in the Teensy, not the external RAM chip) is allotted for audio recording. It is measured in sample blocks, each providing 2.9ms of audio.
+  sgtl5000_1.enable();    // this turns on the SGTL5000, which is the audio codec on the audio board
+  sgtl5000_1.volume(1);   // this sets the output volume (it can be between 0 and 1)
+  sgtl5000_1.inputSelect(AUDIO_INPUT_LINEIN); // selects the audio input, we always use Line In
+  analogReadResolution(12); // configure the pots to give 12 bit readings
+  pinMode(0, INPUT_PULLUP); // internal pull-up resistor for footswitch
+  pinMode(1, INPUT_PULLUP); // internal pull-up resistor for toggle
+  pinMode(2, INPUT_PULLUP); // internal pull-up resistor for toggle
+  pinMode(3, OUTPUT);       // pin 3 (the LED) is an output;
+  Serial.begin(9600);       // initiate the serial monitor. USB is always 12 Mbit/sec
+  analogReadAveraging(32);  
+
+  sgtl5000_1.adcHighPassFilterDisable();
+  sgtl5000_1.audioPostProcessorEnable();
+  sgtl5000_1.audioPreProcessorEnable();
+  sgtl5000_1.autoVolumeEnable();
+
+  lofidelay1.begin(delay_line, delay_max);
+  //lofidelay1.setdelay(100);
+
+  
+  // output mixers
+  mixer1.gain(0,1);
+  mixer1.gain(1,1);
+  mixer1.gain(2,0);
+  mixer1.gain(3,0);
+
+  mixer2.gain(0,1);
+  mixer2.gain(1,1);
+
+  mixer3.gain(0,1);
+  mixer3.gain(1,0);
+
+  // feedback mixer
+  mixer4.gain(0,1);
+  mixer4.gain(1,0);
+
+  //initialise delays
+  lofidelay1.setdelay(0, delaytime);
+  lofidelay1.setdelay(1, delaytime / 2);
+
+
+ // bitcrusher1.bits(16);  
+ // bitcrusher1.sampleRate(44100); 
+  
+}
+
+
+
+void loop() {
+
+    sub_time = (analogRead(A0) >> 2) + 50;
+
+    n_time = sub_time ;
+    up_time = sub_time / 2;
+    
+    if(abs(sub_time - lastdelaytime) >= 50)
+    {
+    // neutral  
+    lofidelay1.setdelay(0, n_time);
+    lofidelay1.setdelay(1, n_time);
+    // sub
+    lofidelay1.setdelay(2, sub_time);
+    lofidelay1.setdelay(3, sub_time);
+    // up
+    lofidelay1.setdelay(4, up_time);
+    lofidelay1.setdelay(5, up_time);
+    lastdelaytime = sub_time;
+    }
+
+    //octave volumes
+    octdown = (float) analogRead(A1) / 4095;
+    mixer1.gain(2, octdown);
+    mixer1.gain(3, octdown);
+    octup = (float) analogRead(A2) / 4095;
+    mixer3.gain(1, octup);
+    
+    //feedback
+    if(!digitalRead(0)) feedback = 0.5;
+    else feedback = (float) analogRead(A3) / 8000;
+    mixer4.gain(1,feedback);
+
+
+    // glitches
+    if(millis() - n_milis >= n_time - (n_time / 32))                                       // neutral fade out
+    {
+      if(!n_fade) {fade1.fadeOut((n_time / 32));                }  // n_fade = 1;}
+      else if(n_fade) {fade2.fadeOut((n_time / 32));            } // n_fade = 0;}
+      
+      n_milis = millis();
+      ncanfade = 1;
+    }
+
+    if(millis() - n_milis == (n_time / 32) && ncanfade)                                                // neutral fade in
+    {
+      if(!n_fade) {fade2.fadeIn((n_time / 32)); n_fade = 1;}
+      else if(n_fade) {fade1.fadeIn((n_time / 32)); n_fade = 0;}
+      ncanfade = 0;
+    }
+
+    
+    
+    if(millis() - sub_milis >= sub_time - 25)                     // sub
+    {
+      fadesub ();
+      sub_milis = millis();
+    }
+    
+    if(millis() - up_milis >= up_time - 25)                     // up
+    {
+      fadeup ();
+      up_milis = millis();
+    }
+
+
+
+    
+
+ //   checkToggle();
+ //   if(left) lofidelay1.setoctave(0);
+ //   else if(middle) lofidelay1.setoctave(1);
+ //   else if(right) lofidelay1.setoctave(2);
+
+
+// do fades / glitch
+//  glitchtime = (analogRead(A1) >> 3) + 80;  // 50 to 561
+/*  if(millis() - currentMillis >= delaytime)              //(count >= glitchtime);  // time to glitch
+  {
+    digitalWrite(LED, HIGH);
+    fadeout();
+    lastfade = whichfade;
+    whichfade = 1 - whichfade;
+    fadein();
+    currentMillis = millis();    
+  }
+  if(millis() - currentMillis >= 20) digitalWrite(LED, LOW);
+  
+
+  samplerate = (analogRead(A3) * 5) + 1000;        // samplerate pot ranges from 1000 to 9190
+  bitcrusher1.sampleRate(samplerate); 
+*/
+}
+
+
+
+
+// glitch functions
+
+
+
+void fadeneutral ()
+{
+  if(!n_fade) {fade1.fadeOut(fadetime); fade2.fadeIn(fadetime);                 n_fade = 1;}
+  else if(n_fade) {fade2.fadeOut(fadetime); fade1.fadeIn(fadetime);             n_fade = 0;}
+}
+
+
+void fadesub ()
+{
+  if(!sub_fade) {fade3.fadeOut(fadetime); fade4.fadeIn(fadetime);                 sub_fade = 1;}
+  else if(sub_fade) {fade4.fadeOut(fadetime); fade3.fadeIn(fadetime);             sub_fade = 0;}
+}
+
+void fadeup ()
+{
+  if(!up_fade) {fade5.fadeOut(fadetime); fade6.fadeIn(fadetime);                 up_fade = 1;}
+  else if(up_fade) {fade6.fadeOut(fadetime); fade5.fadeIn(fadetime);             up_fade = 0;}
+}
+
+
+
+
+/*
+void fadeout ()
+{
+  if(whichfade == 0) {fade1.fadeOut(fadetime); lofidelay1.begin(delay_line, delay_max); octv = rand() % 3; lofidelay1.setoctave(octv); }
+  if(whichfade == 1) {fade2.fadeOut(fadetime); lofidelay1.begin(delay_line, delay_max); octv = rand() % 3; lofidelay1.setoctave(octv); }
+//  if(whichfade == 2) {fade3.fadeOut(fadetime); }
+//  if(whichfade == 3) {fade4.fadeOut(fadetime); }
+//  if(whichfade == 4) {fade5.fadeOut(fadetime); }
+//  if(whichfade == 5) {fade6.fadeOut(fadetime); }
+//  if(whichfade == 6) {fade7.fadeOut(fadetime); }
+//  if(whichfade == 7) {fade8.fadeOut(fadetime); }
+}
+
+void fadein ()
+{
+  if(whichfade == 0) fade1.fadeIn(fadetime);
+  if(whichfade == 1) fade2.fadeIn(fadetime);
+//  if(whichfade == 2) fade3.fadeIn(fadetime);
+//  if(whichfade == 3) fade4.fadeIn(fadetime);
+//  if(whichfade == 4) fade5.fadeIn(fadetime);
+//  if(whichfade == 5) fade6.fadeIn(fadetime);
+//  if(whichfade == 6) fade7.fadeIn(fadetime);
+//  if(whichfade == 7) fade8.fadeIn(fadetime);
+}
+*/
