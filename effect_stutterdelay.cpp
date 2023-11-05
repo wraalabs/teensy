@@ -27,6 +27,15 @@ void AudioEffectStutterDelay::delayorstutter(bool dos)
   delorstut = dos;
 }
 
+void AudioEffectStutterDelay::setrate(int ratey)
+{
+  stutterlength = ratey;
+}
+
+void AudioEffectStutterDelay::setlag(int laggy)
+{
+  lag = laggy;
+}
 
 
 void AudioEffectStutterDelay::setdelay(byte channel, uint16_t delay_time)                 // pass delaytime in miliseconds
@@ -300,16 +309,17 @@ if(!delorstut)
   
       if( read_index1 >= stutterlength)                                           // CYCLE COMPLETE
       {
+        if(cyclecount ==  lag)                // lag control
+        {
+          write_index2 = 0;
+        }
         cyclecount++;
         if(cyclecount >= cycles * 2) 
         {
           cyclecount = 0;
           write_index = 0;
         }     
-        if(cyclecount == cycles - 1)
-        {
-          write_index2 = 0;
-        }
+
         read_index2 = 0;
         read_index1 = 0;
       }
