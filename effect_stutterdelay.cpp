@@ -2,9 +2,11 @@
 
 #include "stutterdelay.h"
 
-void AudioEffectStutterDelay::begin(int16_t *delay_line, uint16_t max_delay_length) 
+void AudioEffectStutterDelay::begin(int16_t *delay_line, int16_t *delay_line2, uint16_t max_delay_length) 
 {
   sample_delay_line = delay_line;
+
+  sample_delay_line2 = delay_line2;
   
   max_delay_length_samples = max_delay_length - 1;
 }
@@ -83,10 +85,10 @@ if(onOff)
 {
 
   
-  audio_block_t *blockw, *block1;
-  // *block2, *block3, *block4;        // create audio memory blocks and pointers...
+  audio_block_t *blockw,  *block1, *block2, *block3, *block4;        // create audio memory blocks and pointers...
 
   int16_t *blockw_pointer;                                                   // can we use only 1 of these? 
+  int16_t *blockw_pointer2;                                                   // can we use only 1 of these? 
   int16_t *block_pointer1;
   int16_t *block_pointer2;
   int16_t *block_pointer3;
@@ -97,14 +99,15 @@ if(onOff)
   if (sample_delay_line == NULL) return;
 
   blockw = receiveWritable();                                                // recieve writable block of samples 
+//  blockw2 = receiveWritable();                                                // recieve writable block of samples 
   block1 = allocate(); 
-//  block2 = allocate();                                                      // recieve spare blocks for extra delay outputs
-//  block3 = allocate(); 
-//  block4 = allocate(); 
+  block2 = allocate();                                                      // recieve spare blocks for extra delay outputs
+  block3 = allocate(); 
+  block4 = allocate(); 
                                                   
 if(!delorstut)
 {
-  
+ // if(blockw2) release(blockw2); // not using 2nd rec in this mode
 
 // channel 0  WRITING BLOCK                                                 where the delay is taken and stored from 
   if (blockw) {
@@ -133,7 +136,7 @@ if(!delorstut)
   }
 
 
-// channel 1                                                      NEUTRAL 1
+// channel 1                                                     
   if(block1) {
     block_pointer1 = block1->data;
 
@@ -157,10 +160,10 @@ if(!delorstut)
     release(block1);
   }
 
-#ifdef kjglllllllh
+//#ifdef kjglllllllh
 
 
-// channel 2                                                      NEUTRAL 2 (R)
+// channel 2                                                      
   if(block2) {
     block_pointer2 = block2->data;
 
@@ -185,7 +188,7 @@ if(!delorstut)
   }
 
 
-// channel 3                                                      SUB 1
+// channel 3                                                     
   if(block3) {
     block_pointer3 = block3->data;
 
@@ -210,7 +213,7 @@ if(!delorstut)
   }
 
 
-// channel 4                                                      SUB 2 (R)
+// channel 4                                                    
   if(block4) {
     block_pointer4 = block4->data;
 
@@ -233,7 +236,7 @@ if(!delorstut)
     transmit(block4, 3);                                                    // transmit the block out on channel 0
     release(block4);
   }
-  #endif
+  //#endif
 
 }
 
@@ -241,11 +244,9 @@ if(!delorstut)
 
   if(delorstut)
   {
-    if(blockw)                        // RECORD
+    if(blockw)                        // RECORD 1
     {
-                                                    
-      if  (1) 
-      {
+                                                   
         blockw_pointer = blockw->data;
 
         use_sample = 1;
@@ -254,22 +255,27 @@ if(!delorstut)
         {           
           if(use_sample && write_index <= max_delay_length_samples) 
           {
-            sample_delay_line[write_index++] = *blockw_pointer;                   // write sample to buffer    
-           // if (write_index >= max_delay_length_samples) write_index = 0;         // wrap round indexes
+            sample_delay_line[write_index++] = *blockw_pointer;                   // write sample to buffer   
           } 
+
+          if(use_sample && write_index2 <= max_delay_length_samples)              // record buffer 2  <--------------------------------------------------
+          {
+            sample_delay_line2[write_index2++] = *blockw_pointer;              
+          } 
+
+          
           use_sample = 1 - use_sample;                                            // flip bool bit... 
           
           blockw_pointer++;                                                       // ...and move the block_pointer on each time
+        //  blockw_pointer++;                                                      
         }
-      }                                                   // transmit the block out on channel 0
+                                                        // transmit the block out on channel 0
       release(blockw);
       
     }
-    
-
-
 
     
+                            /////////////  PLAY 1
     if(block1) 
     {
       block_pointer1 = block1->data;
@@ -282,8 +288,6 @@ if(!delorstut)
         if(use_sample) 
         {
           *block_pointer1 = sample_delay_line[read_index1];                 // read sample out (no writing on channel 1)
-    
-       //   if (read_index1 >= max_delay_length_samples) read_index1 = 0;
         }
         else  *block_pointer1 = sample_delay_line[read_index1++];               // repeat last read sample (actually the next here)
   
@@ -296,18 +300,19 @@ if(!delorstut)
   
       if( read_index1 >= stutterlength)                                           // CYCLE COMPLETE
       {
-        stuttercount = 0;
         cyclecount++;
-        if(cyclecount >= cycles) 
+        if(cyclecount >= cycles * 2) 
         {
           cyclecount = 0;
           write_index = 0;
+        }     
+        if(cyclecount == cycles - 1)
+        {
+          write_index2 = 0;
         }
-        
-        read_index1 = 0;
         read_index2 = 0;
+        read_index1 = 0;
       }
-      else stuttercount++;
   
       
       transmit(block1, 0);                                                    // transmit the block out on channel 0
@@ -316,11 +321,82 @@ if(!delorstut)
     
 
 
- // if(block2) release(block2);
- // if(block3) release(block3);
- // if(block4) release(block4);
 
+          ////////////////////////////////////// SECOND STUTTER BUFFER //////////////////////////////////////////
+
+
+/*
+    if(blockw2)                        // RECORD 2
+    {
+                                                   
+        blockw_pointer2 = blockw->data;
+
+        use_sample = 1;
+      
+        for (int i = 0; i < AUDIO_BLOCK_SAMPLES; i++)                             // iterate through audio block
+        {           
+          if(use_sample && write_index2 <= max_delay_length_samples) 
+          {
+            sample_delay_line2[write_index2++] = *blockw_pointer2;                   // write sample to buffer    
+          } 
+          use_sample = 1 - use_sample;                                            // flip bool bit... 
+          
+          blockw_pointer2++;                                                       // ...and move the block_pointer on each time
+        }
+                                                        // transmit the block out on channel 0
+      release(blockw2);
+      
+    }
+*/
+
+
+
+
+    if(block2) 
+    {
+      block_pointer2 = block2->data;
+
+      use_sample = 1;
+
+      for (int j = 0; j < AUDIO_BLOCK_SAMPLES; j++)                           // iterate through audio block
+      {
+              
+        if(use_sample) 
+        {
+          *block_pointer2 = sample_delay_line2[read_index2];                 // read sample out (no writing on channel 1)
+        }
+        else  *block_pointer2 = sample_delay_line2[read_index2++];               // repeat last read sample (actually the next here)
   
+        
+        use_sample = 1 - use_sample;                                     // flip bool bit... (octave up mode without this line)
+        block_pointer2++; 
+        
+      }
+
+/*
+      if( read_index1 >= stutterlength / 2)                                           // CYCLE COMPLETE
+      {
+        cyclecount2++;
+        if(cyclecount2 >= cycles) 
+        {
+          cyclecount2 = 0;
+          write_index2 = 0;
+        }
+        
+        read_index2 = 0;
+      }
+  */    
+
+      
+      transmit(block2, 1);                                                    // transmit the block out on channel 0
+      release(block2);
+
+    }
+
+
+
+  if(block3) release(block3);
+  if(block4) release(block4);
   
     
   }
